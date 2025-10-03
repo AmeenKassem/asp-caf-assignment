@@ -1,9 +1,11 @@
+from pathlib import Path
+
 from libcaf.plumbing import hash_object, load_commit, load_tree, save_commit, save_tree
 
 from libcaf import Commit, Tree, TreeRecord, TreeRecordType
 
 
-def test_save_load_commit(temp_repo_dir):
+def test_save_load_commit(temp_repo_dir: Path) -> None:
     commit = Commit('tree_hash123', 'Author', 'Commit message', 1234567890, 'commithash123parent')
     commit_hash = hash_object(commit)
 
@@ -17,7 +19,7 @@ def test_save_load_commit(temp_repo_dir):
     assert loaded_commit.parent == commit.parent
 
 
-def test_save_load_commit_without_parent(temp_repo_dir):
+def test_save_load_commit_without_parent(temp_repo_dir: Path) -> None:
     commit_none_parent = Commit('commithash456', 'Author', 'Commit message', 1234567890, None)
     commit_none_parent_hash = hash_object(commit_none_parent)
 
@@ -31,7 +33,7 @@ def test_save_load_commit_without_parent(temp_repo_dir):
     assert loaded_commit_none_parent.parent == commit_none_parent.parent
 
 
-def test_save_load_tree(temp_repo_dir):
+def test_save_load_tree(temp_repo_dir: Path) -> None:
     records = {
         'omer': TreeRecord(TreeRecordType.BLOB, 'omer123', 'omer'),
         'bar': TreeRecord(TreeRecordType.BLOB, 'bar123', 'bar'),

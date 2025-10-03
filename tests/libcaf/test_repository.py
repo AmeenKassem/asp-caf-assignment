@@ -1,14 +1,14 @@
+from pathlib import Path
 from shutil import rmtree
 
-from libcaf.constants import DEFAULT_BRANCH, HASH_LENGTH, HEADS_DIR
-from libcaf.plumbing import delete_content, hash_file, hash_object, load_commit, load_tree, open_content_for_reading, \
-    save_file_content
-from libcaf.ref import SymRef
+from libcaf.constants import DEFAULT_BRANCH, HASH_LENGTH
+from libcaf.plumbing import hash_object, load_commit, load_tree
+from libcaf.ref import RefError, SymRef
 from libcaf.repository import HashRef, Repository, RepositoryError, branch_ref
 from pytest import raises
 
 
-def test_init_with_custom_repo_dir(temp_repo_dir):
+def test_init_with_custom_repo_dir(temp_repo_dir: Path) -> None:
     custom_repo_dir = '.custom_caf'
     repo = Repository(temp_repo_dir, custom_repo_dir)
 
@@ -19,7 +19,8 @@ def test_init_with_custom_repo_dir(temp_repo_dir):
     assert repo.exists()
     assert (temp_repo_dir / custom_repo_dir).exists()
 
-def test_commit(temp_repo):
+
+def test_commit(temp_repo: Repository) -> None:
     temp_file = temp_repo.working_dir / 'test_file.txt'
     temp_file.write_text('This is a test file for commit.')
 
@@ -34,14 +35,16 @@ def test_commit(temp_repo):
     assert commit.message == message
     assert commit.tree_hash is not None
 
-    # Check that HEAD remains pointing to the branch and that the branch points to the commit
+    # Check that HEAD remains pointing to the branch
+    # and that the branch points to the commit
     assert temp_repo.head_ref() == branch_ref(DEFAULT_BRANCH)
     assert temp_repo.head_commit() == commit_ref
 
     commit_object = temp_repo.objects_dir() / commit_ref[:2] / commit_ref
     assert commit_object.exists()
 
-def test_commit_with_parent(temp_repo):
+
+def test_commit_with_parent(temp_repo: Repository) -> None:
     objects_dir = temp_repo.objects_dir()
 
     temp_file = temp_repo.working_dir / 'test_file.txt'
@@ -65,7 +68,8 @@ def test_commit_with_parent(temp_repo):
 
     assert second_commit.parent == first_commit_ref
 
-def test_save_dir(temp_repo):
+
+def test_save_dir(temp_repo: Repository) -> None:
     test_dir = temp_repo.working_dir / 'test_dir'
     test_dir.mkdir()
     sub_dir = test_dir / 'sub_dir'
@@ -91,7 +95,8 @@ def test_save_dir(temp_repo):
 
     assert (objects_dir / tree_ref[:2] / tree_ref).exists()
 
-def test_head_log(temp_repo):
+
+def test_head_log(temp_repo: Repository) -> None:
     temp_file = temp_repo.working_dir / 'commit_test.txt'
 
     temp_file.write_text('Initial commit')
@@ -102,7 +107,8 @@ def test_head_log(temp_repo):
 
     assert [_.commit_ref for _ in temp_repo.log()] == [commit_ref2, commit_ref1]
 
-def test_refs_directory_not_exists_raises_error(temp_repo):
+
+def test_refs_directory_not_exists_raises_error(temp_repo: Repository) -> None:
     # Remove the refs directory to trigger the error condition
     refs_dir = temp_repo.refs_dir()
     rmtree(refs_dir)
@@ -111,7 +117,8 @@ def test_refs_directory_not_exists_raises_error(temp_repo):
     with raises(RepositoryError):
         temp_repo.refs()
 
-def test_refs_directory_is_file_raises_error(temp_repo):
+
+def test_refs_directory_is_file_raises_error(temp_repo: Repository) -> None:
     refs_dir = temp_repo.refs_dir()
 
     # Remove refs directory if it exists and create a file with the same name
@@ -122,31 +129,35 @@ def test_refs_directory_is_file_raises_error(temp_repo):
     with raises(RepositoryError):
         temp_repo.refs()
 
-def test_resolve_ref_invalid_string_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_resolve_ref_invalid_string_raises_error(temp_repo: Repository) -> None:
+    with raises(RefError):
         temp_repo.resolve_ref('invalid_reference_string')
 
-    with raises(ValueError):
+    with raises(RefError):
         temp_repo.resolve_ref('g' * HASH_LENGTH)  # 'g' is not a valid hex character
 
-    with raises(ValueError):
+    with raises(RefError):
         temp_repo.resolve_ref('abc123')
 
-def test_resolve_ref_invalid_type_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_resolve_ref_invalid_type_raises_error(temp_repo: Repository) -> None:
+    with raises(RefError):
         temp_repo.resolve_ref(123)
 
-    with raises(ValueError):
+    with raises(RefError):
         temp_repo.resolve_ref([])
 
-    with raises(ValueError):
+    with raises(RefError):
         temp_repo.resolve_ref({})
 
-def test_update_ref_nonexistent_reference_raises_error(temp_repo):
+
+def test_update_ref_nonexistent_reference_raises_error(temp_repo: Repository) -> None:
     with raises(RepositoryError):
         temp_repo.update_ref('nonexistent_branch', HashRef('a' * 40))
 
-def test_delete_repo_removes_repository(temp_repo):
+
+def test_delete_repo_removes_repository(temp_repo: Repository) -> None:
     repo_path = temp_repo.repo_path()
     assert repo_path.exists()
     assert temp_repo.exists()
@@ -156,54 +167,62 @@ def test_delete_repo_removes_repository(temp_repo):
     assert not repo_path.exists()
     assert not temp_repo.exists()
 
-def test_add_empty_branch_name_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_add_empty_branch_name_raises_error(temp_repo: Repository) -> None:
+    with raises(ValueError, match='Branch name is required'):
         temp_repo.add_branch('')
 
-def test_add_branch_already_exists_raises_error(temp_repo):
+
+def test_add_branch_already_exists_raises_error(temp_repo: Repository) -> None:
     with raises(RepositoryError):
         temp_repo.add_branch(DEFAULT_BRANCH)
 
-def test_save_dir_invalid_path_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_save_dir_invalid_path_raises_error(temp_repo: Repository) -> None:
+    with raises(NotADirectoryError):
         temp_repo.save_dir(None)
 
-    with raises(ValueError):
-        test_file = temp_repo.working_dir / 'test_file.txt'
+    test_file = temp_repo.working_dir / 'test_file.txt'
+    with raises(NotADirectoryError):
         temp_repo.save_dir(test_file)
 
-    with raises(ValueError):
+    with raises(NotADirectoryError):
         temp_repo.save_dir(temp_repo.working_dir / 'non_existent_dir')
 
-def test_delete_empty_branch_name_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_delete_empty_branch_name_raises_error(temp_repo: Repository) -> None:
+    with raises(ValueError, match='Branch name is required'):
         temp_repo.delete_branch('')
 
-def test_delete_nonexistent_branch_name_raises_error(temp_repo):
+
+def test_delete_nonexistent_branch_name_raises_error(temp_repo: Repository) -> None:
     with raises(RepositoryError):
         temp_repo.delete_branch('nonexistent_branch')
 
-def test_delete_last_branch_name_raises_error(temp_repo):
+
+def test_delete_last_branch_name_raises_error(temp_repo: Repository) -> None:
     with raises(RepositoryError):
         temp_repo.delete_branch('main')
 
-def test_commit_working_dir_empty_author_or_message_raises_error(temp_repo):
-    with raises(ValueError):
+
+def test_commit_working_dir_empty_author_or_message_raises_error(temp_repo: Repository) -> None:
+    with raises(ValueError, match='Author is required'):
         temp_repo.commit_working_dir('', 'Valid message')
 
-    with raises(ValueError):
-        temp_repo.commit_working_dir(None, 'Valid message')
+    with raises(ValueError, match='Author is required'):
+        temp_repo.commit_working_dir(None, 'Valid message')  # type: ignore
 
-    with raises(ValueError):
+    with raises(ValueError, match='Commit message is required'):
         temp_repo.commit_working_dir('Valid author', '')
 
-    with raises(ValueError):
-        temp_repo.commit_working_dir('Valid author', None)
+    with raises(ValueError, match='Commit message is required'):
+        temp_repo.commit_working_dir('Valid author', None)  # type: ignore
 
-    with raises(ValueError):
+    with raises(ValueError, match='Author is required'):
         temp_repo.commit_working_dir('', '')
 
-def test_log_corrupted_commit_raises_error(temp_repo):
+
+def test_log_corrupted_commit_raises_error(temp_repo: Repository) -> None:
     # First, create a valid commit
     temp_file = temp_repo.working_dir / 'test_file.txt'
     temp_file.write_text('Initial commit content')
@@ -219,7 +238,8 @@ def test_log_corrupted_commit_raises_error(temp_repo):
     with raises(RepositoryError):
         list(temp_repo.log())  # Convert generator to list to force evaluation
 
-def test_diff_commits_corrupted_commit_raises_error(temp_repo):
+
+def test_diff_commits_corrupted_commit_raises_error(temp_repo: Repository) -> None:
     # First, create two valid commits
     temp_file = temp_repo.working_dir / 'test_file.txt'
     temp_file.write_text('Initial commit content')
@@ -238,7 +258,8 @@ def test_diff_commits_corrupted_commit_raises_error(temp_repo):
     with raises(RepositoryError):
         temp_repo.diff_commits(commit_ref1, commit_ref2)
 
-def test_diff_commits_corrupted_tree_raises_error(temp_repo):
+
+def test_diff_commits_corrupted_tree_raises_error(temp_repo: Repository) -> None:
     # First, create two valid commits
     temp_file = temp_repo.working_dir / 'test_file.txt'
     temp_file.write_text('Initial commit content')
@@ -261,7 +282,8 @@ def test_diff_commits_corrupted_tree_raises_error(temp_repo):
     with raises(RepositoryError):
         temp_repo.diff_commits(commit_ref1, commit_ref2)
 
-def test_diff_commits_corrupted_subtree_raises_error(temp_repo):
+
+def test_diff_commits_corrupted_subtree_raises_error(temp_repo: Repository) -> None:
     # Create a directory structure with subdirectories to trigger recursive tree comparison
     test_dir = temp_repo.working_dir / 'test_dir'
     test_dir.mkdir()
@@ -291,7 +313,7 @@ def test_diff_commits_corrupted_subtree_raises_error(temp_repo):
     root_tree = load_tree(objects_dir, commit1.tree_hash)
 
     # Find the subdirectory tree record
-    subdir_tree_hash = None
+    subdir_tree_hash: str | None = None
     for record in root_tree.records.values():
         if record.name == 'test_dir':
             # Load the test_dir tree to get its subdirectory
@@ -302,6 +324,8 @@ def test_diff_commits_corrupted_subtree_raises_error(temp_repo):
                     break
             break
 
+    assert subdir_tree_hash is not None, 'Subdirectory tree hash should not be None'
+
     # Corrupt the subdirectory tree object
     tree_path = objects_dir / subdir_tree_hash[:2] / subdir_tree_hash
     tree_path.write_text('corrupted subtree data')
@@ -310,16 +334,17 @@ def test_diff_commits_corrupted_subtree_raises_error(temp_repo):
     with raises(RepositoryError):
         temp_repo.diff_commits(commit_ref1, commit_ref2)
 
-def test_head_ref_missing_head_file_raises_error(temp_repo):
+
+def test_head_ref_missing_head_file_raises_error(temp_repo: Repository) -> None:
     # Remove the HEAD file to trigger the error condition
-    head_file = temp_repo._head_file()
-    head_file.unlink()
+    temp_repo.head_file().unlink()
 
     # Attempting to get head_ref should raise RepositoryError due to missing HEAD file
     with raises(RepositoryError):
         temp_repo.head_ref()
 
-def test_head_commit_with_symbolic_ref_returns_hash_ref(temp_repo):
+
+def test_head_commit_with_symbolic_ref_returns_hash_ref(temp_repo: Repository) -> None:
     # First, create a commit so we have something to point to
     temp_file = temp_repo.working_dir / 'test_file.txt'
     temp_file.write_text('Test content')

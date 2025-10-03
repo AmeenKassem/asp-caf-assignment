@@ -1,30 +1,34 @@
+"""Command Line Interface (CLI) for CAF."""
+
 import argparse
 import sys
+from typing import Any
+
 from libcaf.constants import DEFAULT_REPO_DIR
 
-import caf.cli_commands as cli_commands
+from caf import cli_commands
 
-_repo_args = {
+_repo_args: dict[str, dict[str, Any]] = {
     'working_dir_path': {
         'type': str,
         'help': '📂 Path to the working directory of the repository',
-        'default': '.'
+        'default': '.',
     },
     'repo_dir': {
         'type': str,
         'help': '📁 Name of the repository directory',
-        'default': str(DEFAULT_REPO_DIR)
-    }
+        'default': str(DEFAULT_REPO_DIR),
+    },
 }
 
 
-def cli():
+def cli() -> None:
     parser = argparse.ArgumentParser(description='CAF Command Line Interface')
     commands_sub = parser.add_subparsers(title='✨ Available Commands ✨', dest='command',
                                          help='Choose a command to execute')
 
     # Dictionary to map command names to their functions and descriptions
-    commands = {
+    commands: dict[str, dict[str, Any]] = {
         'init': {
             'func': cli_commands.init,
             'args': {
@@ -32,18 +36,18 @@ def cli():
                 'default_branch': {
                     'type': str,
                     'help': '🌱 Name of the default branch (default: "main")',
-                    'default': 'main'
-                }
+                    'default': 'main',
+                },
             },
-            'help': '🛠️ Initialize a new CAF repository'
+            'help': '🛠️ Initialize a new CAF repository',
         },
 
         'delete_repo': {
             'func': cli_commands.delete_repo,
             'args': {
-                **_repo_args
+                **_repo_args,
             },
-            'help': '🗑️ Delete the repository'
+            'help': '🗑️ Delete the repository',
         },
 
         'commit': {
@@ -52,14 +56,14 @@ def cli():
                 **_repo_args,
                 'author': {
                     'type': str,
-                    'help': '👤 Name of the commit author'
+                    'help': '👤 Name of the commit author',
                 },
                 'message': {
                     'type': str,
-                    'help': '💬 Commit message'
-                }
+                    'help': '💬 Commit message',
+                },
             },
-            'help': '✅ Create a new commit'
+            'help': '✅ Create a new commit',
         },
 
         'hash_file': {
@@ -67,7 +71,7 @@ def cli():
             'args': {
                 'path': {
                     'type': str,
-                    'help': '📄 Path of the file to hash'
+                    'help': '📄 Path of the file to hash',
                 },
                 **_repo_args,
                 'write': {
@@ -75,10 +79,10 @@ def cli():
                     'help': '💾 Save the file to the repository',
                     'default': False,
                     'flag': True,
-                    'short_flag': 'w'
-                }
+                    'short_flag': 'w',
+                },
             },
-            'help': '🔍 Print the hash of the file and optionally save it to the repository'
+            'help': '🔍 Print the hash of the file and optionally save it to the repository',
         },
 
         'add_branch': {
@@ -87,10 +91,10 @@ def cli():
                 **_repo_args,
                 'branch_name': {
                     'type': str,
-                    'help': '➕ Name of the branch to add'
-                }
+                    'help': '➕ Name of the branch to add',
+                },
             },
-            'help': 'Add a new branch'
+            'help': 'Add a new branch',
         },
 
         'delete_branch': {
@@ -99,10 +103,10 @@ def cli():
                 **_repo_args,
                 'branch_name': {
                     'type': str,
-                    'help': '❌ Name of the branch to remove'
-                }
+                    'help': '❌ Name of the branch to remove',
+                },
             },
-            'help': '🗑️ Remove an existing branch'
+            'help': '🗑️ Remove an existing branch',
         },
 
         'branch_exists': {
@@ -111,26 +115,26 @@ def cli():
                 **_repo_args,
                 'branch_name': {
                     'type': str,
-                    'help': '🔍 Name of the branch to check'
-                }
+                    'help': '🔍 Name of the branch to check',
+                },
             },
-            'help': '❓ Check if a branch exists'
+            'help': '❓ Check if a branch exists',
         },
 
         'branch': {
             'func': cli_commands.branch,
             'args': {
-                **_repo_args
+                **_repo_args,
             },
-            'help': '📚 List all branches'
+            'help': '📚 List all branches',
         },
 
         'log': {
             'func': cli_commands.log,
             'args': {
-                **_repo_args
+                **_repo_args,
             },
-            'help': '📜 Show commit log'
+            'help': '📜 Show commit log',
         },
 
         'diff': {
@@ -139,15 +143,15 @@ def cli():
                 **_repo_args,
                 'commit1': {
                     'type': str,
-                    'help': '🔄 First commit hash to diff'
+                    'help': '🔄 First commit hash to diff',
                 },
                 'commit2': {
                     'type': str,
-                    'help': '🔄 Second commit hash to diff'
-                }
+                    'help': '🔄 Second commit hash to diff',
+                },
             },
-            'help': '📊 Display differences between two commits'
-        }
+            'help': '📊 Display differences between two commits',
+        },
     }
 
     # Register commands

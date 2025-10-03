@@ -1,19 +1,22 @@
+"""CLI command implementations for CAF (Content Addressable File system)."""
+
 import sys
+from collections.abc import MutableSequence, Sequence
 from datetime import datetime
 from pathlib import Path
 
-import libcaf.plumbing as plumbing
 from libcaf.constants import DEFAULT_BRANCH
+from libcaf.plumbing import hash_file as plumbing_hash_file
 from libcaf.ref import SymRef
-from libcaf.repository import (AddedDiff, ModifiedDiff, MovedFromDiff, MovedToDiff, RemovedDiff,
-                               Repository, RepositoryError, RepositoryNotFoundError)
+from libcaf.repository import (AddedDiff, Diff, ModifiedDiff, MovedToDiff, RemovedDiff, Repository, RepositoryError,
+                               RepositoryNotFoundError)
 
 
-def _print_error(message):
+def _print_error(message: str) -> None:
     print(f'❌ Error: {message}', file=sys.stderr)
 
 
-def _print_success(message):
+def _print_success(message: str) -> None:
     print(message)
 
 
@@ -49,7 +52,7 @@ def hash_file(**kwargs) -> int:
         _print_error(f'File {path} does not exist.')
         return -1
 
-    file_hash = plumbing.hash_file(path)
+    file_hash = plumbing_hash_file(path)
     _print_success(f'Hash: {file_hash}')
 
     if not kwargs.get('write', False):
@@ -68,7 +71,7 @@ def hash_file(**kwargs) -> int:
 
 def add_branch(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
-    branch_name = kwargs.get('branch_name', None)
+    branch_name = kwargs.get('branch_name')
 
     if not branch_name:
         _print_error('Branch name is required.')
@@ -88,7 +91,7 @@ def add_branch(**kwargs) -> int:
 
 def delete_branch(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
-    branch_name = kwargs.get('branch_name', None)
+    branch_name = kwargs.get('branch_name')
 
     if not branch_name:
         _print_error('Branch name is required.')
@@ -108,19 +111,19 @@ def delete_branch(**kwargs) -> int:
 
 def branch_exists(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
-    branch_name = kwargs.get('branch_name', None)
+    branch_name = kwargs.get('branch_name')
 
     if not branch_name:
         _print_error('Branch name is required.')
         return -1
 
     try:
-        if repo.branch_exists(branch_name):
+        if repo.branch_exists(SymRef(branch_name)):
             _print_success(f'Branch "{branch_name}" exists.')
             return 0
-        else:
-            _print_error(f'Branch "{branch_name}" does not exist.')
-            return -1
+
+        _print_error(f'Branch "{branch_name}" does not exist.')
+        return -1
     except RepositoryNotFoundError:
         _print_error(f'No repository found at {repo.repo_path()}')
         return -1
@@ -142,7 +145,7 @@ def branch(**kwargs) -> int:
         # Extract branch name from SymRef if HEAD points to a branch
         current_branch = current_head.branch_name() if isinstance(current_head, SymRef) else None
 
-        for index, branch in enumerate(branches):
+        for branch in branches:
             if branch == current_branch:
                 print(f'* {branch}')
             else:
@@ -159,8 +162,8 @@ def branch(**kwargs) -> int:
 
 def commit(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
-    author = kwargs.get('author', None)
-    message = kwargs.get('message', None)
+    author = kwargs.get('author')
+    message = kwargs.get('message')
 
     if not author:
         _print_error('Author name is required.')
@@ -217,8 +220,8 @@ def log(**kwargs) -> int:
 
 def diff(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
-    commit1 = kwargs.get('commit1', None)
-    commit2 = kwargs.get('commit2', None)
+    commit1 = kwargs.get('commit1')
+    commit2 = kwargs.get('commit2')
 
     if not commit1 or not commit2:
         _print_error('Both commit1 and commit2 parameters are required for diff.')
@@ -231,26 +234,7 @@ def diff(**kwargs) -> int:
             _print_success('No changes detected between commits.')
             return 0
 
-        _print_success('Diff:\n')
-
-        stack = [(diffs, 0)]
-        while stack:
-            current_diffs, indent = stack.pop()
-            for diff in current_diffs:
-                print(' ' * indent, end='')
-
-                match diff:
-                    case AddedDiff(record, _, _):
-                        print(f'Added: {record.name}')
-                    case ModifiedDiff(record, _, _):
-                        print(f'Modified: {record.name}')
-                    case MovedToDiff(record, _, _, moved_to):
-                        print(f'Moved: {record.name} -> {moved_to.record.name}')
-                    case RemovedDiff(record, _, _):
-                        print(f'Removed: {record.name}')
-
-                if diff.children:
-                    stack.append((diff.children, indent + 3))
+        _print_diffs([(diffs, 0)])
 
         return 0
     except RepositoryNotFoundError:
@@ -261,14 +245,33 @@ def diff(**kwargs) -> int:
         return -1
 
 
-def _repo_from_cli_kwargs(kwargs) -> Repository:
+def _repo_from_cli_kwargs(kwargs: dict[str, str]) -> Repository:
     working_dir_path = kwargs.get('working_dir_path', '.')
-    repo_dir = kwargs.get('repo_dir', None)
-
-    if isinstance(repo_dir, str):
-        repo_dir = Path(repo_dir)
-
-    if isinstance(working_dir_path, str):
-        working_dir_path = Path(working_dir_path)
+    repo_dir = kwargs.get('repo_dir')
 
     return Repository(working_dir_path, repo_dir)
+
+
+def _print_diffs(diff_stack: MutableSequence[tuple[Sequence[Diff], int]]) -> None:
+    _print_success('Diff:\n')
+
+    while diff_stack:
+        current_diffs, indent = diff_stack.pop()
+        for diff in current_diffs:
+            print(' ' * indent, end='')
+
+            match diff:
+                case AddedDiff(record, _, _):
+                    print(f'Added: {record.name}')
+                case ModifiedDiff(record, _, _):
+                    print(f'Modified: {record.name}')
+                case MovedToDiff(record, _, _, moved_to):
+                    assert moved_to is not None, 'MovedToDiff must have a moved_to record, this is a bug!'
+                    print(f'Moved: {record.name} -> {moved_to.record.name}')
+                case RemovedDiff(record, _, _):
+                    print(f'Removed: {record.name}')
+                case _:
+                    pass
+
+            if diff.children:
+                diff_stack.append((diff.children, indent + 3))

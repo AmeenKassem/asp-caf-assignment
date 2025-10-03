@@ -1,3 +1,5 @@
+"""Constants used throughout libcaf."""
+
 from _libcaf import hash_length
 
 DEFAULT_REPO_DIR = '.caf'

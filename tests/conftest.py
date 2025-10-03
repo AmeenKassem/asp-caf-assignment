@@ -1,9 +1,9 @@
+from collections.abc import Callable
 from pathlib import Path
 from random import choice
 
-from pytest import fixture
-
 from libcaf.repository import Repository
+from pytest import CaptureFixture, FixtureRequest, TempPathFactory, fixture
 
 
 def _random_string(length: int) -> str:
@@ -11,13 +11,13 @@ def _random_string(length: int) -> str:
 
 
 @fixture
-def temp_repo_dir(tmp_path_factory) -> Path:
+def temp_repo_dir(tmp_path_factory: TempPathFactory) -> Path:
     return tmp_path_factory.mktemp('test_repo', numbered=True)
 
 
 @fixture
 def temp_repo(temp_repo_dir: Path) -> Repository:
-    repo = Repository(temp_repo_dir)
+    repo = Repository(working_dir=temp_repo_dir)
     repo.init()
 
     return repo
@@ -29,27 +29,45 @@ def temp_content_length() -> int:
 
 
 @fixture
-def temp_content(request, temp_content_length: int) -> tuple[Path, str]:
+def temp_content(request: FixtureRequest, temp_content_length: int) -> tuple[Path, str]:
     factory = request.getfixturevalue('temp_content_file_factory')
 
     return factory(length=temp_content_length)
 
 
 @fixture
-def temp_content_file_factory(tmp_path_factory, temp_content_length: int) -> callable:
+def temp_content_file_factory(tmp_path_factory: TempPathFactory, temp_content_length: int) -> Callable[
+    [str, int], tuple[Path, str]]:
     test_files = tmp_path_factory.mktemp('test_files')
 
-    def _factory(content: str = None, length: int = None) -> tuple[Path, str]:
+    def _factory(content: bytes | str | None = None, length: int | None = None) -> tuple[Path, bytes | str]:
         if length is None:
             length = temp_content_length
         if content is None:
-            content = _random_string(length)
+            content = _random_string(length).encode('utf-8')
 
         file = test_files / _random_string(10)
-        with open(file, 'w') as f:
-            print(f'{content=}')
+        with file.open('wb') as f:
             f.write(content)
 
         return file, content
 
     return _factory
+
+
+@fixture
+def parse_commit_hash(capsys: CaptureFixture[str]) -> Callable[[], str]:
+    def _parse() -> str:
+        out = capsys.readouterr().out
+
+        commit_hash = None
+        for line in out.splitlines():
+            if line.startswith('Hash:'):
+                commit_hash = line.split(':', 1)[1].strip()
+
+        if commit_hash is None:
+            msg = 'No hash found in output!'
+            raise ValueError(msg)
+        return commit_hash
+
+    return _parse
