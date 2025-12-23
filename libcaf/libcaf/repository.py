@@ -1,5 +1,5 @@
 """libcaf repository management."""
-
+import os
 import shutil
 from collections import deque
 from collections.abc import Callable, Generator, Sequence
@@ -11,7 +11,7 @@ from typing import Concatenate
 
 from . import Blob, Commit, Tree, TreeRecord, TreeRecordType
 from .constants import (DEFAULT_BRANCH, DEFAULT_REPO_DIR, HASH_CHARSET, HASH_LENGTH, HEADS_DIR, HEAD_FILE,
-                        OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR)
+                        OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE)
 from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree
 from .ref import HashRef, Ref, RefError, SymRef, read_ref, write_ref
 
@@ -102,6 +102,9 @@ class Repository:
         # Tags initialization
         tags_dir = self.tags_dir()
         tags_dir.mkdir(parents=True)
+        # Users initialization
+        users_dir = self.users_dir()
+        users_dir.mkdir(parents=True)
 
         self.add_branch(default_branch)
 
@@ -641,6 +644,128 @@ class Repository:
 
         :return: The path to the HEAD file."""
         return self.repo_path() / HEAD_FILE
+    
+    def users_dir(self) -> Path:
+        """Get the path to the users directory within the repository.
+
+        :return: The path to the users directory.
+        """
+        return self.repo_path() / USERS_DIR
+
+    def current_user_file(self) -> Path:
+        """Get the path to the CURRENT_USER file within the repository.
+        :return: The path to the CURRENT_USER file."""
+        return self.repo_path() / CURRENT_USER_FILE
+    
+    @requires_repo
+    def add_user(self, username: str) -> None:
+        """Add a new user to the repository.
+        :param username: The username to add.
+        :raises ValueError: If the username is empty or invalid.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """        
+        username = self._validate_username(username)
+        user_path = self.users_dir() / username
+        try:
+            user_path.touch(exist_ok=False)
+        except FileExistsError:
+            return  # User already exists, no-op
+
+
+    @requires_repo
+    def users(self) -> list[str]:
+        """Return all known users in the repository.
+        :return: A list of usernames.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+
+        users_path = self.users_dir()
+        if not users_path.exists():
+            return []
+
+        result: list[str] = []
+        for u in users_path.iterdir():
+            if u.is_file():
+                result.append(u.name)    
+            
+        return result
+    
+    @requires_repo
+    def set_current_user(self, username: str) -> None:
+        """Set the current user (must already exist in the repo users list).
+        :param username: The username to set as current.    
+        :raises ValueError: If the username is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+
+        username = self._validate_username(username)
+        user_path = self.users_dir() / username
+        if not user_path.exists():
+            raise RepositoryError(f'User "{username}" does not exist. Add it first.')
+
+        current_path = self.current_user_file()
+        current_path.write_text(username + '\n', encoding='utf-8')
+        
+    @requires_repo
+    def current_user(self) -> str | None:
+        """Return the current user, or None if no user is set.
+        :return: The current username, or None if no user is set.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        
+        current_path = self.current_user_file()
+        if not current_path.exists():
+            return None
+
+        user = current_path.read_text(encoding='utf-8').strip()
+        if not user:
+            return None
+        if not (self.users_dir() / user).exists():
+            self.unset_current_user()
+            return None
+        return user
+    
+    @requires_repo
+    def unset_current_user(self) -> None:
+        """Unset the current user.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        
+        current_path = self.current_user_file()
+        if current_path.exists():
+            current_path.unlink()
+
+    @requires_repo
+    def delete_user(self, username: str) -> None:
+        """Delete a user from the repository.
+        :param username: The username to delete.
+        :raises ValueError: If the username is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        username = self._validate_username(username)
+        users_path = self.users_dir() / username
+        if not users_path.exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
+
+        was_current = (self.current_user() == username)
+        if was_current:
+            self.unset_current_user()
+        users_path.unlink()
+            
+    def _validate_username(self, username: str) -> str:
+        username = username.strip()
+        if not username:
+            raise ValueError("Username is required")
+
+        if "/" in username or "\\" in username:
+            raise ValueError("Invalid username: path separators are not allowed")
+        if username in {".", ".."}:
+            raise ValueError("Invalid username")
+
+        return username
+
 
 
 def branch_ref(branch: str) -> SymRef:
@@ -656,3 +781,4 @@ def tag_ref(tag: str) -> SymRef:
     :param tag: The name of the tag.
     :return: A SymRef object representing the tag reference."""
     return SymRef(f'{TAGS_DIR}/{tag}')
+
