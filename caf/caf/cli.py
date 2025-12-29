@@ -241,6 +241,18 @@ def cli() -> None:
             },
             'help': 'Delete a user from the repository',
         },
+                'user_likes': {
+            'func': cli_commands.user_likes,
+            'args': {
+                **_repo_args,
+                'username': {
+                    'type': str,
+                    'help': '👤 Username to query likes for',
+                },
+            },
+            'help': 'Show all likes made by a user',
+        },
+
 
 
 

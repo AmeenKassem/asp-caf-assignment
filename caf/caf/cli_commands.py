@@ -468,3 +468,36 @@ def delete_user(**kwargs) -> int:
         _print_error(str(e))
         return -1
 
+def user_likes(**kwargs) -> int:
+    repo = _repo_from_cli_kwargs(kwargs)
+    username = kwargs.get('username')
+
+    if not username:
+        _print_error('Username is required.')
+        return -1
+
+    try:
+        likes = repo.user_likes(username)
+
+        if not likes:
+            _print_success('No likes found.')
+            return 0
+
+        _print_success('Likes:')
+        for item in likes:
+            print(item)
+
+        return 0
+
+    except RepositoryNotFoundError:
+        _print_error(f'No repository found at {repo.repo_path()}')
+        return -1
+    except RepositoryError as e:
+        _print_error(str(e))
+        return -1
+    except ValueError as e:
+        _print_error(str(e))
+        return -1
+    except Exception as e:
+        _print_error(str(e))
+        return -1

@@ -11,7 +11,7 @@ from typing import Concatenate
 
 from . import Blob, Commit, Tree, TreeRecord, TreeRecordType
 from .constants import (DEFAULT_BRANCH, DEFAULT_REPO_DIR, HASH_CHARSET, HASH_LENGTH, HEADS_DIR, HEAD_FILE,
-                        OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE)
+                        OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE, LIKES_DIR, LIKES_USERS_DIR)
 from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree
 from .ref import HashRef, Ref, RefError, SymRef, read_ref, write_ref
 
@@ -105,6 +105,12 @@ class Repository:
         # Users initialization
         users_dir = self.users_dir()
         users_dir.mkdir(parents=True)
+        # Likes initialization
+        likes_dir = self.likes_dir()
+        likes_dir.mkdir(parents=True)
+        likes_users_dir = self.likes_users_dir()
+        likes_users_dir.mkdir(parents=True)
+        
 
         self.add_branch(default_branch)
 
@@ -765,6 +771,52 @@ class Repository:
             raise ValueError("Invalid username")
 
         return username
+    
+    def likes_dir(self) -> Path:
+        """Get the path to the likes directory within the repository.
+
+        :return: The path to the likes directory."""
+        return self.repo_path() / LIKES_DIR
+    
+    def likes_users_dir(self) -> Path:
+        """Get the path to the likes users directory within the repository.
+
+        :return: The path to the likes users directory."""
+        return self.likes_dir() / LIKES_USERS_DIR
+
+    @requires_repo
+    def user_likes(self, username: str) -> list[str]:
+        """Return all liked items for the given user.
+
+        The likes are stored under the repository's likes-by-user directory,
+        where each liked item is represented by a file named after the liked target.
+
+        :param username: The username whose likes should be returned.
+        :return: A list of liked target identifiers (file names).
+        :raises ValueError: If the username is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        username = self._validate_username(username)
+        # Ensure the user exists in the system (consistent with set_current_user/delete_user behavior)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
+
+        base = self.likes_users_dir()
+        if not base.exists():
+            return []
+
+        user_dir = base / username
+        if not user_dir.exists():
+            return []
+
+        result: list[str] = []
+        for entry in user_dir.iterdir():
+            if entry.is_file():
+                result.append(entry.name)
+
+        return result
+
 
 
 
