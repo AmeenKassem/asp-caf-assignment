@@ -477,16 +477,115 @@ def user_likes(**kwargs) -> int:
         return -1
 
     try:
-        likes = repo.user_likes(username)
+        likes = repo.list_likes_by_user(username)
 
         if not likes:
-            _print_success('No likes found.')
+            _print_success('0 Likes found.')
             return 0
 
-        _print_success('Likes:')
+        _print_success(f'{len(likes)} Likes found:')
         for item in likes:
             print(item)
 
+        return 0
+
+    except RepositoryNotFoundError:
+        _print_error(f'No repository found at {repo.repo_path()}')
+        return -1
+    except RepositoryError as e:
+        _print_error(str(e))
+        return -1
+    except ValueError as e:
+        _print_error(str(e))
+        return -1
+    except Exception as e:
+        _print_error(str(e))
+        return -1
+
+def commit_likes(**kwargs) -> int:
+    repo = _repo_from_cli_kwargs(kwargs)
+
+    # Accept both names to be robust with CLI/argparse and future refactoring
+    commit_hash = kwargs.get('commit_hash') or kwargs.get('commit')
+
+    if not commit_hash:
+        _print_error('Commit hash is required.')
+        return -1
+
+    try:
+        users = repo.list_likes_by_commit(commit_hash)
+
+        if not users:
+            _print_success('0 Likes found.')
+            return 0
+
+        _print_success(f'{len(users)} Likes found:')
+        for u in users:
+            print(u)
+
+        return 0
+
+    except RepositoryNotFoundError:
+        _print_error(f'No repository found at {repo.repo_path()}')
+        return -1
+    except RepositoryError as e:
+        _print_error(str(e))
+        return -1
+    except ValueError as e:
+        _print_error(str(e))
+        return -1
+    except Exception as e:
+        _print_error(str(e))
+        return -1
+
+
+def like_commit(**kwargs) -> int:
+    repo = _repo_from_cli_kwargs(kwargs)
+    username = kwargs.get('username')
+    commit_hash = kwargs.get('commit_hash')
+
+    if not username:
+        _print_error('Username is required.')
+        return -1
+
+    if not commit_hash:
+        _print_error('Commit hash is required.')
+        return -1
+
+    try:
+        repo.add_like(username, commit_hash)
+        _print_success(f'User "{username}" liked commit "{commit_hash}".')
+        return 0
+
+    except RepositoryNotFoundError:
+        _print_error(f'No repository found at {repo.repo_path()}')
+        return -1
+    except RepositoryError as e:
+        _print_error(str(e))
+        return -1
+    except ValueError as e:
+        _print_error(str(e))
+        return -1
+    except Exception as e:
+        _print_error(str(e))
+        return -1
+    
+def unlike_commit(**kwargs) -> int:
+    repo = _repo_from_cli_kwargs(kwargs)
+    username = kwargs.get('username')
+    commit_hash = kwargs.get('commit_hash')
+
+    if not username:
+        _print_error('Username is required.')
+        return -1
+
+    if not commit_hash:
+        _print_error('Commit hash is required.')
+        return -1
+
+    try:
+        repo.remove_like(username, commit_hash)
+        _print_success(f'User "{username}" unliked commit "{commit_hash}".')
         return 0
 
     except RepositoryNotFoundError:
