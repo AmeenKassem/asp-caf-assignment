@@ -14,7 +14,7 @@ from .constants import (DEFAULT_BRANCH, DEFAULT_REPO_DIR, HASH_CHARSET, HASH_LEN
                         OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE)
 from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree
 from .ref import HashRef, Ref, RefError, SymRef, read_ref, write_ref
-from .likes import add_like,remove_like,list_likes_by_user,list_likes_by_commit,init_likes
+from .likes import add_like, remove_like, list_likes_by_user, list_likes_by_commit, init_likes, rebuild_commit_likes_cache
 
 class RepositoryError(Exception):
     """Exception raised for repository-related errors."""
@@ -105,7 +105,6 @@ class Repository:
         # Users initialization
         users_dir = self.users_dir()
         users_dir.mkdir(parents=True)
-        # Likes initialization
         init_likes(self.repo_path())
 
         self.add_branch(default_branch)
@@ -768,7 +767,6 @@ class Repository:
 
         return username
     
-    #LIKES MANAGEMENT METHODS 
     @requires_repo
     def add_like(self, username: str, commit_hash: str) -> None:
         """Add a like from a user to a specific commit.
@@ -778,6 +776,9 @@ class Repository:
         :raises RepositoryError: If the user does not exist.
         :raises RepositoryNotFoundError: If the repository does not exist.
         """
+        username = self._validate_username(username)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
         add_like(self.repo_path(), username, commit_hash)
         
     @requires_repo
@@ -789,6 +790,9 @@ class Repository:
         :raises RepositoryError: If the user does not exist.
         :raises RepositoryNotFoundError: If the repository does not exist.
         """
+        username = self._validate_username(username)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
         remove_like(self.repo_path(), username, commit_hash)
     
     @requires_repo
@@ -813,10 +817,19 @@ class Repository:
         :raises ValueError: If the commit hash is empty or invalid.
         :raises RepositoryNotFoundError: If the repository does not exist.
         """
+        commit_hash = commit_hash.strip()
+        if not commit_hash:
+            raise ValueError("Commit hash is required")
+        try:
+            _ = load_commit(self.objects_dir(), commit_hash)
+        except Exception as e:
+            raise RepositoryError(f'Commit "{commit_hash}" does not exist.') from e
         return list_likes_by_commit(self.repo_path(), commit_hash)
-    #END OF LIKES MANAGEMENT METHODS
-
-
+    
+    @requires_repo
+    def rebuild_likes_cache(self) -> None:
+        """Rebuild commit-like cache from the user-like SOT."""
+        rebuild_commit_likes_cache(self.repo_path())
 
 
 def branch_ref(branch: str) -> SymRef:

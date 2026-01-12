@@ -6,15 +6,12 @@ from pytest import CaptureFixture
 from caf import cli_commands
 
 
-def _fake_hash(ch: str) -> str:
-    return (ch * HASH_LENGTH)[:HASH_LENGTH]
-
 
 def test_user_likes_lists_likes_for_user(temp_repo: Repository, capsys: CaptureFixture[str]) -> None:
     cli_commands.add_user(working_dir_path=temp_repo.working_dir, username="goku")
 
-    commit1 = _fake_hash("a")
-    commit2 = _fake_hash("b")
+    commit1 = "a" * HASH_LENGTH
+    commit2 = "b" * HASH_LENGTH
 
     add_like(temp_repo.repo_path(), "goku", commit1)
     add_like(temp_repo.repo_path(), "goku", commit2)

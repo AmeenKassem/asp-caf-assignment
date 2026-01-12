@@ -241,7 +241,7 @@ def cli() -> None:
             },
             'help': 'Delete a user from the repository',
         },
-                'user_likes': {
+        'user_likes': {
             'func': cli_commands.user_likes,
             'args': {
                 **_repo_args,
@@ -252,7 +252,7 @@ def cli() -> None:
             },
             'help': 'Show all likes made by a user',
         },
-                'commit_likes': {
+        'commit_likes': {
             'func': cli_commands.commit_likes,
             'args': {
                 **_repo_args,
@@ -263,7 +263,7 @@ def cli() -> None:
             },
             'help': 'Show all users who liked a commit',
             },
-                'like': {
+        'like': {
             'func': cli_commands.like_commit,
             'args': {
                 **_repo_args,
@@ -278,7 +278,7 @@ def cli() -> None:
             },
             'help': 'Like a commit',
         },
-                'unlike': {
+        'unlike': {
             'func': cli_commands.unlike_commit,
             'args': {
                 **_repo_args,
@@ -292,6 +292,13 @@ def cli() -> None:
                 },
             },
             'help': 'Unlike a commit',
+        },
+        'repair_likes': {
+            'func': cli_commands.rebuild_likes_cache,
+            'args': {
+                **_repo_args,
+            },
+            'help': 'Rebuild the commit-like cache from the user-like SOT',
         },
 
     }

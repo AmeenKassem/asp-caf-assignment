@@ -495,12 +495,6 @@ def user_likes(**kwargs) -> int:
     except RepositoryError as e:
         _print_error(str(e))
         return -1
-    except ValueError as e:
-        _print_error(str(e))
-        return -1
-    except Exception as e:
-        _print_error(str(e))
-        return -1
 
 def commit_likes(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
@@ -531,12 +525,6 @@ def commit_likes(**kwargs) -> int:
     except RepositoryError as e:
         _print_error(str(e))
         return -1
-    except ValueError as e:
-        _print_error(str(e))
-        return -1
-    except Exception as e:
-        _print_error(str(e))
-        return -1
 
 
 def like_commit(**kwargs) -> int:
@@ -561,12 +549,6 @@ def like_commit(**kwargs) -> int:
         _print_error(f'No repository found at {repo.repo_path()}')
         return -1
     except RepositoryError as e:
-        _print_error(str(e))
-        return -1
-    except ValueError as e:
-        _print_error(str(e))
-        return -1
-    except Exception as e:
         _print_error(str(e))
         return -1
     
@@ -594,9 +576,18 @@ def unlike_commit(**kwargs) -> int:
     except RepositoryError as e:
         _print_error(str(e))
         return -1
-    except ValueError as e:
-        _print_error(str(e))
+
+def rebuild_likes_cache(**kwargs) -> int:
+    repo = _repo_from_cli_kwargs(kwargs)
+
+    try:
+        repo.rebuild_likes_cache()
+        _print_success('Rebuilt commit-like cache from user-like SOT.')
+        return 0
+
+    except RepositoryNotFoundError:
+        _print_error(f'No repository found at {repo.repo_path()}')
         return -1
-    except Exception as e:
+    except RepositoryError as e:
         _print_error(str(e))
         return -1
