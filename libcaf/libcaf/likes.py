@@ -10,7 +10,7 @@ import time
 import shutil
 
 
-def _write_like_sot_with_ts(path: Path, ts_ns: int) -> None:
+def _write_like(path: Path, ts_ns: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -30,8 +30,16 @@ def _write_like_sot_with_ts(path: Path, ts_ns: int) -> None:
 
 
 def rebuild_commit_likes_cache(repo_path: Path) -> None:
-    with _acquire_locks(_journal_lock_path(repo_path), exclusive=True):
-        _recover_journal_locked(repo_path)
+    with _lock_journal(repo_path, exclusive=True):
+        jp = _journal_path(repo_path)
+        jp.parent.mkdir(parents=True, exist_ok=True)
+        tmp = jp.with_suffix(".log.tmp")
+        fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, jp)
 
         commits_base = _likes_commits_base(repo_path)
         if commits_base.exists():
@@ -51,8 +59,11 @@ def rebuild_commit_likes_cache(repo_path: Path) -> None:
                     continue
                 commit_hash = p.name
                 commit_side = _commit_like_path(repo_path, commit_hash, username)
-                commit_side.parent.mkdir(parents=True, exist_ok=True)
-                commit_side.touch(exist_ok=True)
+                try:
+                    ts_ns = int(p.read_text(encoding="utf-8").strip() or "0")
+                except Exception:
+                    ts_ns = 0
+                _write_like(commit_side, ts_ns)
 
 
 def _journal_path(repo_path: Path) -> Path:
@@ -76,6 +87,41 @@ def _append_journal(repo_path: Path, line: str) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def journal_has_pending(repo_path: Path) -> bool:
+    jp = _journal_path(repo_path)
+    if not jp.exists():
+        return False
+    try:
+        if jp.stat().st_size == 0:
+            return False
+    except FileNotFoundError:
+        return False
+    pending : set[str] = set()
+    try:
+        with jp.open("r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                txid = parts[0]
+                if len(parts) >= 2 and parts[1] == "DONE":
+                    pending.discard(txid)
+                    continue
+                if len(parts) >= 2 and parts[1] in {"ADD", "DEL"}:
+                    pending.add(txid)
+    except FileNotFoundError:
+        return False
+    return bool(pending)
+
+def _maybe_recover_from_journal(repo_path: Path) -> None:
+    if not journal_has_pending(repo_path):
+        return
+    with _lock_journal(repo_path, exclusive=True):
+        if not journal_has_pending(repo_path):
+            return
+        _recover_journal_locked(repo_path)
 
 
 def _recover_journal_locked(repo_path: Path) -> None:
@@ -120,10 +166,9 @@ def _recover_journal_locked(repo_path: Path) -> None:
         legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
 
         if op == "ADD":
-            _write_like_sot_with_ts(user_side, ts_ns if ts_ns is not None else time.time_ns())
-
-            commit_side.parent.mkdir(parents=True, exist_ok=True)
-            commit_side.touch(exist_ok=True)
+            t = ts_ns if ts_ns is not None else time.time_ns()
+            _write_like(user_side, t)
+            _write_like(commit_side, t)
 
             if legacy_commit_side.exists():
                 legacy_commit_side.unlink()
@@ -196,117 +241,82 @@ def _likes_locks_base(repo_path: Path) -> Path:
     return _likes_base(repo_path) / ".locks"
 
 
-def _user_lock_path(repo_path: Path, username: str) -> Path:
-    return _likes_locks_base(repo_path) / "users" / f"{username}.lock"
-
-
-def _commit_lock_path(repo_path: Path, commit_hash: str) -> Path:
-    return _likes_locks_base(repo_path) / "commits" / f"{commit_hash}.lock"
-
-
 @contextmanager
-def _acquire_locks(*lock_paths: Path, exclusive: bool) -> Iterator[None]:
-    paths = sorted(lock_paths)
-    lock_type = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-
-    fds: list[int] = []
+def _lock_journal(repo_path: Path, *, exclusive: bool = True) -> Iterator[None]:
+    lock_path = _journal_lock_path(repo_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        for p in paths:
-            p.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(p, os.O_CREAT | os.O_RDWR, 0o600)
-            fds.append(fd)
-            fcntl.flock(fd, lock_type)
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
         yield
     finally:
-        for fd in reversed(fds):
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            finally:
-                os.close(fd)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
 
 def add_like(repo_path: Path, username: str, commit_hash: str) -> None:
     username = _validate_username(username)
     commit_hash = _validate_commit_hash(commit_hash)
-    with _acquire_locks(
-        _journal_lock_path(repo_path),
-        _user_lock_path(repo_path, username),
-        _commit_lock_path(repo_path, commit_hash),
-        exclusive=True,
-    ):
-        _recover_journal_locked(repo_path)
-        txid = _new_txid()
-        ts_ns = time.time_ns()
-        _append_journal(repo_path, f"{txid} ADD {username} {commit_hash} {ts_ns}\n")
+    _maybe_recover_from_journal(repo_path)
+    ts_ns = time.time_ns()
 
-        user_side = (_likes_users_base(repo_path) / username) / commit_hash
-        _write_like_sot_with_ts(user_side, ts_ns)
 
+    user_side = (_likes_users_base(repo_path) / username) / commit_hash
+    _write_like(user_side, ts_ns)
     
-        commit_side = _commit_like_path(repo_path,commit_hash,username)
-        commit_side.parent.mkdir(parents=True, exist_ok=True)
-        commit_side.touch(exist_ok=True)
+    txid = _new_txid()
+    _append_journal(repo_path, f"{txid} ADD {username} {commit_hash} {ts_ns}\n")
 
-        _append_journal(repo_path, f"{txid} DONE\n")
+    commit_side = _commit_like_path(repo_path,commit_hash,username)
+    _write_like(commit_side, ts_ns)
+    _append_journal(repo_path, f"{txid} DONE\n")
     
 def remove_like(repo_path: Path, username: str, commit_hash: str) -> None:
     username = _validate_username(username)
     commit_hash = _validate_commit_hash(commit_hash)
-    with _acquire_locks(
-        _journal_lock_path(repo_path),
-        _user_lock_path(repo_path, username),
-        _commit_lock_path(repo_path, commit_hash),
-        exclusive=True,
-    ):
-        _recover_journal_locked(repo_path)
-        txid = _new_txid()
-        _append_journal(repo_path, f"{txid} DEL {username} {commit_hash}\n")
-        
-        users_dir = _likes_users_base(repo_path) / username
-        user_side = users_dir / commit_hash
-        if user_side.exists():
-            user_side.unlink()
-        
-        commit_side = _commit_like_path(repo_path,commit_hash,username)
-        legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
-        if commit_side.exists():
-            commit_side.unlink()
-        if legacy_commit_side.exists():
-            legacy_commit_side.unlink()
-        
-        _append_journal(repo_path, f"{txid} DONE\n")
+    _maybe_recover_from_journal(repo_path)
+
+    users_dir = _likes_users_base(repo_path) / username
+    user_side = users_dir / commit_hash
+    if user_side.exists():
+        user_side.unlink()
+ 
+    txid = _new_txid()
+    _append_journal(repo_path, f"{txid} DEL {username} {commit_hash}\n")
+    
+    commit_side = _commit_like_path(repo_path,commit_hash,username)
+    legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
+    if commit_side.exists():
+        commit_side.unlink()
+    if legacy_commit_side.exists():
+        legacy_commit_side.unlink()
+    _append_journal(repo_path, f"{txid} DONE\n")
 
 
-def list_likes_by_user(repo_path: Path, username: str) -> list[str]:
+def likes_by_user(repo_path: Path, username: str) -> set[str]:
     username = _validate_username(username)
-    with _acquire_locks(
-        _user_lock_path(repo_path, username),
-        exclusive=False,
-    ):
-        user_dir = _likes_users_base(repo_path) / username
-        if not user_dir.exists() or not user_dir.is_dir():
-            return []
-        commits: list[str] = [p.name for p in user_dir.iterdir() if p.is_file()]
-        return commits
+    user_dir = _likes_users_base(repo_path) / username
+    if not user_dir.exists() or not user_dir.is_dir():
+        return set()
+    return {p.name for p in user_dir.iterdir() if p.is_file()}
 
 
-def list_likes_by_commit(repo_path: Path, commit_hash: str) -> list[str]:
+def likes_by_commit(repo_path: Path, commit_hash: str) -> set[str]:
     commit_hash = _validate_commit_hash(commit_hash)
-    with _acquire_locks(
-        _commit_lock_path(repo_path, commit_hash),
-        exclusive=False,
-    ):
-        commit_dir = _likes_commits_base(repo_path) / commit_hash
-        if not commit_dir.exists() or not commit_dir.is_dir():
-            return []
-        users_set : set[str] = set()
-        for p in commit_dir.iterdir():
+    commit_dir = _likes_commits_base(repo_path) / commit_hash
+    if not commit_dir.exists() or not commit_dir.is_dir():
+        return set()
+    users_set : set[str] = set()
+    for p in commit_dir.iterdir():
+        if p.is_file():
+            users_set.add(p.name)
+    for bucket_dir in commit_dir.iterdir():
+        if not bucket_dir.is_dir():
+            continue
+        for p in bucket_dir.iterdir():
             if p.is_file():
-                users_set.add(p.name)
-        for bucket_dir in commit_dir.iterdir():
-            if not bucket_dir.is_dir():
-                continue
-            for p in bucket_dir.iterdir():
-                if p.is_file():
-                    users_set.add(p.name) 
-        return list(users_set)
+                users_set.add(p.name) 
+    return users_set
     

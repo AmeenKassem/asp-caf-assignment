@@ -27,7 +27,7 @@ def test_user_likes_no_likes_prints_message(temp_repo: Repository, capsys: Captu
 
     assert cli_commands.user_likes(working_dir_path=temp_repo.working_dir, username="vegeta") == 0
     out = capsys.readouterr().out.lower()
-    assert ("0 likes" in out) or (out.strip() == "")
+    assert ("0 likes" in out)
 
 
 def test_user_likes_missing_user_fails(temp_repo: Repository, capsys: CaptureFixture[str]) -> None:

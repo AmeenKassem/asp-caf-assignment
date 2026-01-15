@@ -477,7 +477,7 @@ def user_likes(**kwargs) -> int:
         return -1
 
     try:
-        likes = repo.list_likes_by_user(username)
+        likes = repo.likes_by_user(username)
 
         if not likes:
             _print_success('0 Likes found.')
@@ -507,7 +507,7 @@ def commit_likes(**kwargs) -> int:
         return -1
 
     try:
-        users = repo.list_likes_by_commit(commit_hash)
+        users = repo.likes_by_commit(commit_hash)
 
         if not users:
             _print_success('0 Likes found.')

@@ -1,21 +1,21 @@
 from libcaf.constants import HASH_LENGTH
 from libcaf.likes import (
     add_like,
-    list_likes_by_commit,
-    list_likes_by_user,
+    likes_by_commit,
+    likes_by_user,
     remove_like,
 )
 from libcaf.repository import Repository
 from pytest import raises
 
 
-def test_list_likes_by_user_initially_empty(temp_repo: Repository) -> None:
-    assert list_likes_by_user(temp_repo.repo_path(), "goku") == []
+def test_likes_by_user_initially_empty(temp_repo: Repository) -> None:
+    assert likes_by_user(temp_repo.repo_path(), "goku") == set()
 
 
-def test_list_likes_by_commit_initially_empty(temp_repo: Repository) -> None:
+def test_likes_by_commit_initially_empty(temp_repo: Repository) -> None:
     commit = "a" * HASH_LENGTH
-    assert list_likes_by_commit(temp_repo.repo_path(), commit) == []
+    assert likes_by_commit(temp_repo.repo_path(), commit) == set()
 
 
 def test_add_like_creates_both_sides(temp_repo: Repository) -> None:
@@ -25,8 +25,8 @@ def test_add_like_creates_both_sides(temp_repo: Repository) -> None:
 
     add_like(repo_path, user, commit)
 
-    assert set(list_likes_by_user(repo_path, user)) == {commit}
-    assert set(list_likes_by_commit(repo_path, commit)) == {user}
+    assert set(likes_by_user(repo_path, user)) == {commit}
+    assert set(likes_by_commit(repo_path, commit)) == {user}
 
 
 def test_add_like_idempotent(temp_repo: Repository) -> None:
@@ -37,8 +37,8 @@ def test_add_like_idempotent(temp_repo: Repository) -> None:
     add_like(repo_path, user, commit)
     add_like(repo_path, user, commit)
 
-    assert set(list_likes_by_user(repo_path, user)) == {commit}
-    assert set(list_likes_by_commit(repo_path, commit)) == {user}
+    assert set(likes_by_user(repo_path, user)) == {commit}
+    assert set(likes_by_commit(repo_path, commit)) == {user}
 
 
 def test_remove_like_removes_both_sides(temp_repo: Repository) -> None:
@@ -49,8 +49,8 @@ def test_remove_like_removes_both_sides(temp_repo: Repository) -> None:
     add_like(repo_path, user, commit)
     remove_like(repo_path, user, commit)
 
-    assert list_likes_by_user(repo_path, user) == []
-    assert list_likes_by_commit(repo_path, commit) == []
+    assert likes_by_user(repo_path, user) == set()
+    assert likes_by_commit(repo_path, commit) == set()
 
 
 def test_remove_like_missing_is_idempotent(temp_repo: Repository) -> None:
@@ -60,8 +60,8 @@ def test_remove_like_missing_is_idempotent(temp_repo: Repository) -> None:
     remove_like(repo_path, user, commit)
     remove_like(repo_path, user, commit)
 
-    assert list_likes_by_user(repo_path, user) == []
-    assert list_likes_by_commit(repo_path, commit) == []
+    assert likes_by_user(repo_path, user) == set()
+    assert likes_by_commit(repo_path, commit) == set()
 
 
 def test_remove_like_existing_is_idempotent(temp_repo: Repository) -> None:
@@ -74,8 +74,8 @@ def test_remove_like_existing_is_idempotent(temp_repo: Repository) -> None:
     remove_like(repo_path, user, commit)
     remove_like(repo_path, user, commit)
 
-    assert list_likes_by_user(repo_path, user) == []
-    assert list_likes_by_commit(repo_path, commit) == []
+    assert likes_by_user(repo_path, user) == set()
+    assert likes_by_commit(repo_path, commit) == set()
 
 
 def test_invalid_username_raises_value_error(temp_repo: Repository) -> None:

@@ -12,9 +12,9 @@ from typing import Concatenate
 from . import Blob, Commit, Tree, TreeRecord, TreeRecordType
 from .constants import (DEFAULT_BRANCH, DEFAULT_REPO_DIR, HASH_CHARSET, HASH_LENGTH, HEADS_DIR, HEAD_FILE,
                         OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE)
-from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree
+from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree, content_exists
 from .ref import HashRef, Ref, RefError, SymRef, read_ref, write_ref
-from .likes import add_like, remove_like, list_likes_by_user, list_likes_by_commit, init_likes, rebuild_commit_likes_cache
+from .likes import add_like, remove_like, likes_by_user, likes_by_commit, init_likes, rebuild_commit_likes_cache
 
 class RepositoryError(Exception):
     """Exception raised for repository-related errors."""
@@ -796,10 +796,10 @@ class Repository:
         remove_like(self.repo_path(), username, commit_hash)
     
     @requires_repo
-    def list_likes_by_user(self, username: str) -> list[str]:
+    def likes_by_user(self, username: str) -> set[str]:
         """List all commit hashes liked by a specific user.
         :param username: The username of the user whose likes to list.
-        :return: A list of commit hashes liked by the user.
+        :return: A set of commit hashes liked by the user.
         :raises ValueError: If the username is empty or invalid.
         :raises RepositoryError: If the user does not exist.
         :raises RepositoryNotFoundError: If the repository does not exist.
@@ -807,24 +807,22 @@ class Repository:
         username = self._validate_username(username)
         if not (self.users_dir() / username).exists():
             raise RepositoryError(f'User "{username}" does not exist.')
-        return list_likes_by_user(self.repo_path(), username)
+        return likes_by_user(self.repo_path(), username)
     
     @requires_repo
-    def list_likes_by_commit(self, commit_hash: str) -> list[str]:
+    def likes_by_commit(self, commit_hash: str) -> set[str]:
         """List all usernames who liked a specific commit.
         :param commit_hash: The hash of the commit whose likes to list.
-        :return: A list of usernames who liked the commit.
+        :return: A set of usernames who liked the commit.
         :raises ValueError: If the commit hash is empty or invalid.
         :raises RepositoryNotFoundError: If the repository does not exist.
         """
         commit_hash = commit_hash.strip()
         if not commit_hash:
             raise ValueError("Commit hash is required")
-        try:
-            _ = load_commit(self.objects_dir(), commit_hash)
-        except Exception as e:
-            raise RepositoryError(f'Commit "{commit_hash}" does not exist.') from e
-        return list_likes_by_commit(self.repo_path(), commit_hash)
+        if not content_exists(self.objects_dir(), commit_hash):
+            raise RepositoryError(f'Commit "{commit_hash}" does not exist.')
+        return likes_by_commit(self.repo_path(), commit_hash)
     
     @requires_repo
     def rebuild_likes_cache(self) -> None:
