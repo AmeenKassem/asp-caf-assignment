@@ -31,39 +31,25 @@ def _write_like(path: Path, ts_ns: int) -> None:
 
 def rebuild_commit_likes_cache(repo_path: Path) -> None:
     with _lock_journal(repo_path, exclusive=True):
-        jp = _journal_path(repo_path)
-        jp.parent.mkdir(parents=True, exist_ok=True)
-        tmp = jp.with_suffix(LIKES_JOURNAL_TMP_SUFFIX)
-        fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-        os.replace(tmp, jp)
-
-        commits_base = _likes_commits_base(repo_path)
-        if commits_base.exists():
-            shutil.rmtree(commits_base)
-        commits_base.mkdir(parents=True, exist_ok=True)
-
-        users_base = _likes_users_base(repo_path)
-        if not users_base.exists():
+        _recover_journal_locked(repo_path)
+        likes_users_base = _likes_users_base(repo_path)
+        likes_commits_base = _likes_commits_base(repo_path)
+        if likes_commits_base.exists():
+            shutil.rmtree(likes_commits_base)
+        likes_commits_base.mkdir(parents=True, exist_ok=True)
+        if not likes_users_base.exists():
             return
-
-        for user_dir in users_base.iterdir():
+        for user_dir in likes_users_base.iterdir():
             if not user_dir.is_dir():
                 continue
             username = user_dir.name
-            for p in user_dir.iterdir():
-                if not p.is_file():
+            for like_file in user_dir.iterdir():
+                if not like_file.is_file():
                     continue
-                commit_hash = p.name
+                commit_hash = like_file.name
+                ts_ns = like_file.read_text(encoding="utf-8").strip()
                 commit_side = _commit_like_path(repo_path, commit_hash, username)
-                try:
-                    ts_ns = int(p.read_text(encoding="utf-8").strip() or "0")
-                except Exception:
-                    ts_ns = 0
-                _write_like(commit_side, ts_ns)
+                _write_like(commit_side, int(ts_ns))
 
 
 def _journal_path(repo_path: Path) -> Path:
@@ -73,9 +59,15 @@ def _journal_path(repo_path: Path) -> Path:
 def _journal_lock_path(repo_path: Path) -> Path:
     return _likes_locks_base(repo_path) / "journal.lock"
 
-
-def _new_txid() -> str:
-    return f"{time.time_ns()}-{os.getpid()}"
+def _truncate_journal_locked(repo_path: Path) -> None:
+    jp = _journal_path(repo_path)
+    jp.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(jp, os.O_CREAT | os.O_WRONLY , 0o600)
+    try:
+        os.ftruncate(fd, 0)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _append_journal(repo_path: Path, line: str) -> None:
@@ -94,30 +86,11 @@ def journal_has_pending(repo_path: Path) -> bool:
     if not jp.exists():
         return False
     try:
-        if jp.stat().st_size == 0:
-            return False
+        return jp.exists() and jp.stat().st_size > 0
     except FileNotFoundError:
         return False
-    pending: set[str] = set()
-    try:
-        with jp.open("r", encoding="utf-8") as f:
-            for line in f:
-                parts = line.strip().split()
-                if not parts:
-                    continue
-                txid = parts[0]
-                if len(parts) >= 2 and parts[1] == "DONE":
-                    pending.discard(txid)
-                    continue
-                if len(parts) >= 2 and parts[1] in {"ADD", "DEL"}:
-                    pending.add(txid)
-    except FileNotFoundError:
-        return False
-    return bool(pending)
 
 def _maybe_recover_from_journal(repo_path: Path) -> None:
-    if not journal_has_pending(repo_path):
-        return
     with _lock_journal(repo_path, exclusive=True):
         if not journal_has_pending(repo_path):
             return
@@ -128,68 +101,51 @@ def _recover_journal_locked(repo_path: Path) -> None:
     jp = _journal_path(repo_path)
     if not jp.exists():
         return
-
-    pending: dict[str, tuple[str, str, str, int | None]] = {}
-
-    with jp.open("r", encoding="utf-8") as f:
-        for line in f:
-            parts = line.strip().split()
-            if not parts:
-                continue
-
-            txid = parts[0]
-
-            if len(parts) >= 2 and parts[1] == "DONE":
-                pending.pop(txid, None)
-                continue
-
-            if len(parts) == 4 and parts[1] == "DEL":
-                pending[txid] = ("DEL", parts[2], parts[3], None)
-                continue
-
-            if len(parts) == 5 and parts[1] == "ADD":
-                try:
-                    ts_ns = int(parts[4])
-                except ValueError:
-                    ts_ns = None
-                pending[txid] = ("ADD", parts[2], parts[3], ts_ns)
-                continue
-
-            if len(parts) == 4 and parts[1] == "ADD":
-                pending[txid] = ("ADD", parts[2], parts[3], None)
-                continue
-
-    for (op, username, commit_hash, ts_ns) in pending.values():
-        user_side = (_likes_users_base(repo_path) / username) / commit_hash
-
-        commit_side = _commit_like_path(repo_path, commit_hash, username)
-        legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
-
-        if op == "ADD":
-            t = ts_ns if ts_ns is not None else time.time_ns()
-            _write_like(user_side, t)
-            _write_like(commit_side, t)
-
-            if legacy_commit_side.exists():
-                legacy_commit_side.unlink()
-
-        elif op == "DEL":
-            if user_side.exists():
-                user_side.unlink()
-
-            if commit_side.exists():
-                commit_side.unlink()
-
-            if legacy_commit_side.exists():
-                legacy_commit_side.unlink()
-
-    tmp = jp.with_suffix(LIKES_JOURNAL_TMP_SUFFIX)
-    fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
     try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.replace(tmp, jp)
+        if jp.stat().st_size == 0:
+            return
+    except FileNotFoundError:
+        return
+    try:
+        with jp.open("r", encoding="utf-8") as f:
+            for line in f:
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                op = parts[0]
+                if op == "ADD":
+                    if len(parts) < 4:
+                        continue
+                    username, commit_hash = parts[1], parts[2]
+                    try:
+                        ts_ns = int(parts[3])
+                    except ValueError:
+                        ts_ns = time.time_ns()
+                    
+                    user_side = (_likes_users_base(repo_path) / username) / commit_hash
+                    commit_side = _commit_like_path(repo_path, commit_hash, username)
+                    legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
+                    _write_like(user_side, ts_ns)
+                    _write_like(commit_side, ts_ns)
+                    if legacy_commit_side.exists():
+                        legacy_commit_side.unlink()
+                elif op == "DEL":
+                    if len(parts) < 3:
+                        continue
+                    username, commit_hash = parts[1], parts[2]
+                    user_side = (_likes_users_base(repo_path) / username) / commit_hash
+                    if user_side.exists():
+                        user_side.unlink()
+
+                    commit_side = _commit_like_path(repo_path, commit_hash, username)
+                    legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
+                    if commit_side.exists():
+                        commit_side.unlink()
+                    if legacy_commit_side.exists():
+                        legacy_commit_side.unlink()
+    except FileNotFoundError:
+        return
+    _truncate_journal_locked(repo_path)
 
 
 
@@ -259,44 +215,44 @@ def _lock_journal(repo_path: Path, *, exclusive: bool = True) -> Iterator[None]:
 def add_like(repo_path: Path, username: str, commit_hash: str) -> None:
     username = _validate_username(username)
     commit_hash = _validate_commit_hash(commit_hash)
-    _maybe_recover_from_journal(repo_path)
     ts_ns = time.time_ns()
+    with _lock_journal(repo_path, exclusive=True):
+        if journal_has_pending(repo_path):
+            _recover_journal_locked(repo_path)
+        _append_journal(repo_path, f"ADD {username} {commit_hash} {ts_ns}\n")
+        user_side = _likes_users_base(repo_path) / username / commit_hash
+        commit_side = _commit_like_path(repo_path, commit_hash, username)
+        legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
+        _write_like(user_side, ts_ns)
+        _write_like(commit_side, ts_ns)
+        if legacy_commit_side.exists():
+            legacy_commit_side.unlink()
+        _truncate_journal_locked(repo_path)
 
 
-    user_side = (_likes_users_base(repo_path) / username) / commit_hash
-    _write_like(user_side, ts_ns)
-    
-    txid = _new_txid()
-    _append_journal(repo_path, f"{txid} ADD {username} {commit_hash} {ts_ns}\n")
-
-    commit_side = _commit_like_path(repo_path, commit_hash, username)
-    _write_like(commit_side, ts_ns)
-    _append_journal(repo_path, f"{txid} DONE\n")
-    
 def remove_like(repo_path: Path, username: str, commit_hash: str) -> None:
     username = _validate_username(username)
     commit_hash = _validate_commit_hash(commit_hash)
-    _maybe_recover_from_journal(repo_path)
+    with _lock_journal(repo_path, exclusive=True):
+        if journal_has_pending(repo_path):
+            _recover_journal_locked(repo_path)
+        _append_journal(repo_path, f"DEL {username} {commit_hash}\n")
+        user_side = _likes_users_base(repo_path) / username / commit_hash
+        if user_side.exists():
+            user_side.unlink()
 
-    users_dir = _likes_users_base(repo_path) / username
-    user_side = users_dir / commit_hash
-    if user_side.exists():
-        user_side.unlink()
-
-    txid = _new_txid()
-    _append_journal(repo_path, f"{txid} DEL {username} {commit_hash}\n")
-
-    commit_side = _commit_like_path(repo_path, commit_hash, username)
-    legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
-    if commit_side.exists():
-        commit_side.unlink()
-    if legacy_commit_side.exists():
-        legacy_commit_side.unlink()
-    _append_journal(repo_path, f"{txid} DONE\n")
+        commit_side = _commit_like_path(repo_path, commit_hash, username)
+        legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
+        if commit_side.exists():
+            commit_side.unlink()
+        if legacy_commit_side.exists():
+            legacy_commit_side.unlink()
+        _truncate_journal_locked(repo_path)
 
 
 def likes_by_user(repo_path: Path, username: str) -> set[str]:
     username = _validate_username(username)
+    _maybe_recover_from_journal(repo_path)
     user_dir = _likes_users_base(repo_path) / username
     if not user_dir.exists() or not user_dir.is_dir():
         return set()
@@ -305,6 +261,7 @@ def likes_by_user(repo_path: Path, username: str) -> set[str]:
 
 def likes_by_commit(repo_path: Path, commit_hash: str) -> set[str]:
     commit_hash = _validate_commit_hash(commit_hash)
+    _maybe_recover_from_journal(repo_path)
     commit_dir = _likes_commits_base(repo_path) / commit_hash
     if not commit_dir.exists() or not commit_dir.is_dir():
         return set()
