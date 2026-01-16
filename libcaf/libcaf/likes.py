@@ -1,6 +1,6 @@
 """ Likes — on disk representation and primitives."""
 from pathlib import Path
-from .constants import HASH_CHARSET, HASH_LENGTH, LIKES_DIR, LIKES_USERS_DIR, LIKES_COMMITS_DIR
+from .constants import HASH_CHARSET, HASH_LENGTH, LIKES_DIR, LIKES_USERS_DIR, LIKES_COMMITS_DIR, LIKES_JOURNALS_FILE, LIKES_JOURNAL_TMP_SUFFIX
 import os
 from contextlib import contextmanager
 from typing import Iterator
@@ -33,7 +33,7 @@ def rebuild_commit_likes_cache(repo_path: Path) -> None:
     with _lock_journal(repo_path, exclusive=True):
         jp = _journal_path(repo_path)
         jp.parent.mkdir(parents=True, exist_ok=True)
-        tmp = jp.with_suffix(".log.tmp")
+        tmp = jp.with_suffix(LIKES_JOURNAL_TMP_SUFFIX)
         fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
         try:
             os.fsync(fd)
@@ -67,7 +67,7 @@ def rebuild_commit_likes_cache(repo_path: Path) -> None:
 
 
 def _journal_path(repo_path: Path) -> Path:
-    return _likes_base(repo_path) / "journal.log"
+    return _likes_base(repo_path) / LIKES_JOURNALS_FILE
 
 
 def _journal_lock_path(repo_path: Path) -> Path:
@@ -182,8 +182,8 @@ def _recover_journal_locked(repo_path: Path) -> None:
 
             if legacy_commit_side.exists():
                 legacy_commit_side.unlink()
-                
-    tmp = jp.with_suffix(".log.tmp")
+
+    tmp = jp.with_suffix(LIKES_JOURNAL_TMP_SUFFIX)
     fd = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
     try:
         os.fsync(fd)

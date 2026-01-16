@@ -17,3 +17,5 @@ CURRENT_USER_FILE = 'CURRENT_USER'
 LIKES_DIR = 'likes'
 LIKES_USERS_DIR = 'likes_users'
 LIKES_COMMITS_DIR = 'likes_commits'
+LIKES_JOURNALS_FILE = 'likes_journals.log'
+LIKES_JOURNAL_TMP_SUFFIX = ".log.tmp"
