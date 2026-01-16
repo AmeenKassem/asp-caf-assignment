@@ -241,8 +241,65 @@ def cli() -> None:
             },
             'help': 'Delete a user from the repository',
         },
-
-
+        'user_likes': {
+            'func': cli_commands.user_likes,
+            'args': {
+                **_repo_args,
+                'username': {
+                    'type': str,
+                    'help': '👤 Username to query likes for',
+                },
+            },
+            'help': 'Show all likes made by a user',
+        },
+        'commit_likes': {
+            'func': cli_commands.commit_likes,
+            'args': {
+                **_repo_args,
+                'commit_hash': {
+                    'type': str,
+                    'help': '🔖 Commit hash to query likes for',
+                },
+            },
+            'help': 'Show all users who liked a commit',
+            },
+        'like': {
+            'func': cli_commands.like_commit,
+            'args': {
+                **_repo_args,
+                'username': {
+                    'type': str,
+                    'help': '👤 Username to like a commit',
+                },
+                'commit_hash': {
+                    'type': str,
+                    'help': '🔖 Commit hash to like',
+                },
+            },
+            'help': 'Like a commit',
+        },
+        'unlike': {
+            'func': cli_commands.unlike_commit,
+            'args': {
+                **_repo_args,
+                'username': {
+                    'type': str,
+                    'help': '👤 Username to unlike a commit',
+                },
+                'commit_hash': {
+                    'type': str,
+                    'help': '🔖 Commit hash to unlike',
+                },
+            },
+            'help': 'Unlike a commit',
+        },
+        'repair_likes': {
+            'func': cli_commands.rebuild_likes_cache,
+            'args': {
+                **_repo_args,
+            },
+            'help': 'Rebuild the commit-like cache from the user-like SOT',
+        },
 
     }
 

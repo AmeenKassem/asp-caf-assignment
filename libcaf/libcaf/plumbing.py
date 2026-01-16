@@ -44,6 +44,18 @@ def delete_content(root_dir: str | Path, hash_value: str) -> None:
     _libcaf.delete_content(root_dir, hash_value)
 
 
+def content_exists(root_dir: str | Path, hash_value: str) -> bool:
+    if isinstance(root_dir, Path):
+        root_dir = str(root_dir)
+
+    try:
+        fd = _libcaf.open_content_for_reading(root_dir, hash_value)
+    except Exception:
+        return False
+    else:
+        os.close(fd)
+        return True
+
 def save_file_content(root_dir: str | Path, file_path: str | Path) -> Blob:
     if isinstance(root_dir, Path):
         root_dir = str(root_dir)
@@ -83,6 +95,7 @@ def load_tree(root_dir: str | Path, hash_value: str) -> Tree:
 
 
 __all__ = [
+    'content_exists',
     'delete_content',
     'hash_file',
     'hash_object',

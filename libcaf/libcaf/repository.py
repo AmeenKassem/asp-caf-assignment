@@ -12,9 +12,9 @@ from typing import Concatenate
 from . import Blob, Commit, Tree, TreeRecord, TreeRecordType
 from .constants import (DEFAULT_BRANCH, DEFAULT_REPO_DIR, HASH_CHARSET, HASH_LENGTH, HEADS_DIR, HEAD_FILE,
                         OBJECTS_SUBDIR, REFS_DIR, TAGS_DIR, USERS_DIR, CURRENT_USER_FILE)
-from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree
+from .plumbing import hash_object, load_commit, load_tree, save_commit, save_file_content, save_tree, content_exists
 from .ref import HashRef, Ref, RefError, SymRef, read_ref, write_ref
-
+from .likes import add_like, remove_like, likes_by_user, likes_by_commit, init_likes, rebuild_commit_likes_cache
 
 class RepositoryError(Exception):
     """Exception raised for repository-related errors."""
@@ -105,6 +105,7 @@ class Repository:
         # Users initialization
         users_dir = self.users_dir()
         users_dir.mkdir(parents=True)
+        init_likes(self.repo_path())
 
         self.add_branch(default_branch)
 
@@ -766,6 +767,67 @@ class Repository:
 
         return username
 
+    @requires_repo
+    def add_like(self, username: str, commit_hash: str) -> None:
+        """Add a like from a user to a specific commit.
+        :param username: The username of the user adding the like.
+        :param commit_hash: The hash of the commit to like.
+        :raises ValueError: If the username or commit hash is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        username = self._validate_username(username)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
+        add_like(self.repo_path(), username, commit_hash)
+        
+    @requires_repo
+    def remove_like(self, username: str, commit_hash: str) -> None:
+        """Remove a like from a user to a specific commit.
+        :param username: The username of the user removing the like.
+        :param commit_hash: The hash of the commit to unlike.
+        :raises ValueError: If the username or commit hash is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        username = self._validate_username(username)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
+        remove_like(self.repo_path(), username, commit_hash)
+    
+    @requires_repo
+    def likes_by_user(self, username: str) -> set[str]:
+        """List all commit hashes liked by a specific user.
+        :param username: The username of the user whose likes to list.
+        :return: A set of commit hashes liked by the user.
+        :raises ValueError: If the username is empty or invalid.
+        :raises RepositoryError: If the user does not exist.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        username = self._validate_username(username)
+        if not (self.users_dir() / username).exists():
+            raise RepositoryError(f'User "{username}" does not exist.')
+        return likes_by_user(self.repo_path(), username)
+    
+    @requires_repo
+    def likes_by_commit(self, commit_hash: str) -> set[str]:
+        """List all usernames who liked a specific commit.
+        :param commit_hash: The hash of the commit whose likes to list.
+        :return: A set of usernames who liked the commit.
+        :raises ValueError: If the commit hash is empty or invalid.
+        :raises RepositoryNotFoundError: If the repository does not exist.
+        """
+        commit_hash = commit_hash.strip()
+        if not commit_hash:
+            raise ValueError("Commit hash is required")
+        if not content_exists(self.objects_dir(), commit_hash):
+            raise RepositoryError(f'Commit "{commit_hash}" does not exist.')
+        return likes_by_commit(self.repo_path(), commit_hash)
+    
+    @requires_repo
+    def rebuild_likes_cache(self) -> None:
+        """Rebuild commit-like cache from the user-like SOT."""
+        rebuild_commit_likes_cache(self.repo_path())
 
 
 def branch_ref(branch: str) -> SymRef:
