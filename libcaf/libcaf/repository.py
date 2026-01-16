@@ -766,7 +766,7 @@ class Repository:
             raise ValueError("Invalid username")
 
         return username
-    
+
     @requires_repo
     def add_like(self, username: str, commit_hash: str) -> None:
         """Add a like from a user to a specific commit.

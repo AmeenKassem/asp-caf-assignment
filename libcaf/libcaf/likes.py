@@ -98,7 +98,7 @@ def journal_has_pending(repo_path: Path) -> bool:
             return False
     except FileNotFoundError:
         return False
-    pending : set[str] = set()
+    pending: set[str] = set()
     try:
         with jp.open("r", encoding="utf-8") as f:
             for line in f:
@@ -269,7 +269,7 @@ def add_like(repo_path: Path, username: str, commit_hash: str) -> None:
     txid = _new_txid()
     _append_journal(repo_path, f"{txid} ADD {username} {commit_hash} {ts_ns}\n")
 
-    commit_side = _commit_like_path(repo_path,commit_hash,username)
+    commit_side = _commit_like_path(repo_path, commit_hash, username)
     _write_like(commit_side, ts_ns)
     _append_journal(repo_path, f"{txid} DONE\n")
     
@@ -282,11 +282,11 @@ def remove_like(repo_path: Path, username: str, commit_hash: str) -> None:
     user_side = users_dir / commit_hash
     if user_side.exists():
         user_side.unlink()
- 
+
     txid = _new_txid()
     _append_journal(repo_path, f"{txid} DEL {username} {commit_hash}\n")
-    
-    commit_side = _commit_like_path(repo_path,commit_hash,username)
+
+    commit_side = _commit_like_path(repo_path, commit_hash, username)
     legacy_commit_side = _likes_commits_base(repo_path) / commit_hash / username
     if commit_side.exists():
         commit_side.unlink()
@@ -308,7 +308,7 @@ def likes_by_commit(repo_path: Path, commit_hash: str) -> set[str]:
     commit_dir = _likes_commits_base(repo_path) / commit_hash
     if not commit_dir.exists() or not commit_dir.is_dir():
         return set()
-    users_set : set[str] = set()
+    users_set: set[str] = set()
     for p in commit_dir.iterdir():
         if p.is_file():
             users_set.add(p.name)
@@ -317,6 +317,6 @@ def likes_by_commit(repo_path: Path, commit_hash: str) -> set[str]:
             continue
         for p in bucket_dir.iterdir():
             if p.is_file():
-                users_set.add(p.name) 
+                users_set.add(p.name)
     return users_set
     

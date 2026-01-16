@@ -551,7 +551,10 @@ def like_commit(**kwargs) -> int:
     except RepositoryError as e:
         _print_error(str(e))
         return -1
-    
+    except ValueError as ve:
+        _print_error(f'Value error: {ve}')
+        return -1
+
 def unlike_commit(**kwargs) -> int:
     repo = _repo_from_cli_kwargs(kwargs)
     username = kwargs.get('username')
@@ -575,6 +578,9 @@ def unlike_commit(**kwargs) -> int:
         return -1
     except RepositoryError as e:
         _print_error(str(e))
+        return -1
+    except ValueError as ve:
+        _print_error(f'Value error: {ve}')
         return -1
 
 def rebuild_likes_cache(**kwargs) -> int:
